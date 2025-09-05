@@ -1,0 +1,49 @@
+private function validateCMTRequest(
+    requestContext : RequestContext,
+    body : JsonObject,
+    ceCorrelationId : String,
+    cmtCaseDetails : CMTCaseDetails_Ext
+) : CMTFraudResponse {
+    
+    var cePrimaryObjectType = requestContext.getRawHeaderValue("ce-primaryobjecttype")
+    var cePrimaryObjectId   = requestContext.getRawHeaderValue("ce-primaryobjectid")
+
+    // 1. Check if API is enabled
+    if (!RuntimeProperty.CMTRestAPIEnabled_Ext) {
+        return logAndCreateError("CNTPAPI051", "CMT Rest API is Disabled, CorelationId : ${ceCorrelationId}", ceCorrelationId)
+    }
+
+    // 2. Check correlationId
+    if (ceCorrelationId == null) {
+        return logAndCreateError("CNTPAPI041", "CorrelationId is null, CorelationId : ${ceCorrelationId}", ceCorrelationId)
+    }
+
+    // 3. Check payload body
+    if (body.isEmpty()) {
+        return logAndCreateError("CNTPAPI011", "CMT payload body is Empty, CorelationId : ${ceCorrelationId}", ceCorrelationId)
+    }
+
+    // 4. Check case details
+    if (cmtCaseDetails == null) {
+        return logAndCreateError("CNTPAPI031", "No CMT Details found for CorelationId in CC, CorelationId : ${ceCorrelationId}", ceCorrelationId)
+    }
+
+    // 5. If type is claim → validate publicId
+    if ("claim".equalsIgnoreCase(cePrimaryObjectType)) {
+        if (!cmtCaseDetails.STUPLaybook_ExtID.Claim.PUBLICID.equalsIgnoreCase(cePrimaryObjectId)) {
+            return logAndCreateError("CNTPAPI021", 
+                "Claim not found in CC Database : ${cePrimaryObjectId}", 
+                ceCorrelationId
+            )
+        }
+    }
+
+    // ✅ If all checks passed → process request
+    return processSuccessCmtResponse(body, ceCorrelationId, "SUCCESS", cmtCaseDetails)
+}
+
+// --- Helper for logging + error response ---
+private function logAndCreateError(apiCode : String, errorDesc : String, ceCorrelationId : String) : CMTFraudResponse {
+    _logger.info("${apiCode} : $_api_name::validateCMTRequest() - CC Response : ${errorDesc}")
+    return createCMTServiceResponse(ceCorrelationId, _failure, _noDataErrorCode, errorDesc)
+}
